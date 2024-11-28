@@ -1,82 +1,77 @@
-version: '3.7'
-
+version: "3"
 services:
   elasticsearch-node1:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.1
     container_name: elasticsearch-node1
     environment:
-      - discovery.type=single-node
-      - node.name=node-1
-      - cluster.name=elasticsearch-cluster
+      - node.name=es-node1
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=elasticsearch-node2
+      - cluster.initial_master_nodes=es-node1,es-node2
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
+      - "discovery.type=single-node" # Set this for single node cluster for testing
     volumes:
-      - esdata1:/usr/share/elasticsearch/data
       - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-    ports:
-      - "9200:9200"
+      - esdata1:/usr/share/elasticsearch/data
     networks:
       - elk
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
 
   elasticsearch-node2:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.16.1
     container_name: elasticsearch-node2
     environment:
-      - discovery.type=zen-disco
-      - cluster.name=elasticsearch-cluster
-      - node.name=node-2
+      - node.name=es-node2
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=elasticsearch-node1
+      - cluster.initial_master_nodes=es-node1,es-node2
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
     volumes:
-      - esdata2:/usr/share/elasticsearch/data
       - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - esdata2:/usr/share/elasticsearch/data
     networks:
       - elk
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.5.0
+    image: docker.elastic.co/kibana/kibana:8.16.1
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=https://elasticsearch-node1:9200
       - ELASTICSEARCH_USERNAME=elastic
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_KEYSTORE_PATH=/etc/kibana/keystore/kibana.p12
+      - SERVER_SSL_KEYSTORE_PASSWORD=your-password
     ports:
       - "5601:5601"
     networks:
       - elk
     volumes:
       - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+      - ./config/ssl:/etc/kibana/keystore
     depends_on:
       - elasticsearch-node1
-    extra_hosts:
-      - "elasticsearch-node1:172.18.0.2"
-    environment:
-      - SERVER_SSL_ENABLED=true
-      - SERVER_SSL_KEYSTORE_PATH=/etc/kibana/keystore/your-keystore.p12
-      - SERVER_SSL_KEYSTORE_PASSWORD=your-password
-    volumes:
-      - ./config/ssl:/etc/kibana/keystore
 
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.5.0
+    image: docker.elastic.co/logstash/logstash:8.16.1
     container_name: logstash
     environment:
-      - ELASTICSEARCH_HOST=elasticsearch-node1
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.elasticsearch.hosts=["https://elasticsearch-node1:9200"]
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
     volumes:
-      - ./config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      - ./config/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
     networks:
       - elk
-    depends_on:
-      - elasticsearch-node1
+
+networks:
+  elk:
+    driver: bridge
 
 volumes:
   esdata1:
     driver: local
   esdata2:
     driver: local
-
-networks:
-  elk:
-    driver: bridge
